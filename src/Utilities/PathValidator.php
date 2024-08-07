@@ -2,6 +2,8 @@
 
 namespace tei187\QrImage2Svg\Utilities;
 
+use COM;
+
 /**
  * Class PathValidator
  * 
@@ -12,7 +14,27 @@ class PathValidator
     /**
      * @var int|null Maximum allowed path length
      */
-    private static $maxPathLength;
+    private static $maxPathLength = 8000;
+
+    /**
+     * @var string|null Path which will be used as-if root.
+     */
+    private static $rootDirectory = null;
+
+    /**
+     * Sets the root directory for path validation.
+     *
+     * @param string $directory The root directory path
+     * @throws \InvalidArgumentException If the directory is invalid
+     */
+    public static function setRootDirectory(string $directory): void
+    {
+        $realPath = realpath($directory);
+        if ($realPath === false || !is_dir($realPath)) {
+            throw new \InvalidArgumentException("Invalid root directory: $directory");
+        }
+        self::$rootDirectory = $realPath;
+    }
 
     /**
      * Initializes the maximum path length based on the operating system.
@@ -22,9 +44,13 @@ class PathValidator
     public static function init()
     {
         if (PHP_OS_FAMILY === 'Windows') {
-            $objShell = new \COM("Shell.Application");
-            $objFolder = $objShell->Namespace(0x14);
-            self::$maxPathLength = $objFolder->MaxFileNameLength;
+            try {
+                $objShell = new COM("Shell.Application");
+                $objFolder = $objShell->Namespace(0x14);
+                self::$maxPathLength = $objFolder->MaxFileNameLength;
+            } catch (\Exception $e) {
+                self::$maxPathLength = 8000;
+            }
         } else {
             self::$maxPathLength = PHP_MAXPATHLEN;
         }
@@ -48,6 +74,12 @@ class PathValidator
         $path = self::sanitize($path);
         $path = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
         $realPath = realpath($path);
+
+        if (self::$rootDirectory !== null) {
+            if (strpos($realPath, self::$rootDirectory) !== 0) {
+                throw new \InvalidArgumentException("Path is outside the allowed root directory");
+            }
+        }
 
         if ($mustExist && $realPath === false) {
             throw new \InvalidArgumentException("Path does not exist or is not accessible: $path");

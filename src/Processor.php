@@ -12,6 +12,8 @@ use tei187\QrImage2Svg\Resources\MIME;
  * 
  * Subclasses of `Processor` must implement the abstract methods `_setTilesValues()`, `_probeTilesForColor()`, `_retrieveImageSize()`, and 
  * `_rescaleImage()` to provide the specific implementation details for the conversion process.
+ * 
+ * @todo rewrite for output file naming convention - requires discriminator, so simultaneous processes don't overlap
  */
 abstract class Processor {
     /**
@@ -51,7 +53,7 @@ abstract class Processor {
      * The data for each tile may include information such as its position, size, or other relevant
      * details required for the conversion process.
      */
-    protected array $tilesData = [];
+    protected ?array $tilesData = [];
     
     /**
      * Stores a matrix of filled tiles for the image.
@@ -127,20 +129,22 @@ abstract class Processor {
         if (!is_null($this->image['x']) && !is_null($this->image['y'])) {
             // calculate pixels per tile
             $perTile = $this->image['x'] / $this->config->getSteps();
-            $this->pixelsPerTile = (fn($pt) => fmod($pt, 1) !== 0 
-                ? intval(round($pt, 0, PHP_ROUND_HALF_EVEN))
-                : intval($pt))($perTile);
+            $this->pixelsPerTile = 
+                fmod($perTile, 1) !== 0 
+                    ? intval(round($perTile, 0, PHP_ROUND_HALF_EVEN))
+                    : intval($perTile);
 
             // adjusts pixels per tile to be at least 10
             $this->pixelsPerTile = max($this->pixelsPerTile, self::MIN_PIXELS_PER_TILE);
 
             // rescale image if needed
-            if ($perTile != $this->pixelsPerTile) {
+            //if ($perTile !== $this->pixelsPerTile) {
                 $this->_rescaleImage(
                     $this->config->getSteps() * $this->pixelsPerTile, 
-                    $this->config->getSteps() * $this->pixelsPerTile
+                    $this->config->getSteps() * $this->pixelsPerTile,
+                    "optimized"
                 );
-            }
+            //}
 
             // set optimized flag
             $this->image['optimized'] = true;
@@ -307,7 +311,7 @@ abstract class Processor {
          *
          * @return void
          */
-        abstract protected function _retrieveImageSize();
+        abstract protected function _retrieveImageSize(string $path);
         
         /**
          * Rescales the image used by the converter to the specified width and height.
@@ -318,8 +322,9 @@ abstract class Processor {
          *
          * @param int $w The desired width of the image.
          * @param int $h The desired height of the image.
+         * @param string|null $suffix Suffix to add to the filename after resizing. Null by default.
          */
-        abstract protected function _rescaleImage(int $w, int $h);
+        abstract protected function _rescaleImage(int $w, int $h, ?string $suffix = null);
 
     // ABSTRACT METHODS - end
 }

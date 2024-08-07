@@ -11,58 +11,88 @@ use tei187\QrImage2Svg\Utilities\PathValidator;
  * such as the number of steps, threshold value, color channel, input path, output directory,
  * and file name. It also includes validation logic to ensure the configuration parameters
  * are within the expected ranges.
+ * 
+ * @todo processor picker leading to factory
  */
 class Configuration
 {
     /**
      * The number of steps to use in the QR code conversion process, which must be at least 21.
+     * 
+     * Should be understood as the amount of square tiles in vertical or horizontal alignment.
+     * Mathematically should correspond to the length of any timing sequence length added to 14 (7 x 2 - length of two corner markers).
+     * 
+     * @var int|null
      */
-    private int $steps;
+    private ?int $steps;
     
     /**
      * The threshold value to use in the QR code conversion process, which must be between 0 and 255.
+     * 
+     * @var int
      */
     private int $threshold;
 
     /**
      * The color channel to use in the QR code conversion process, which must be 'red', 'green', or 'blue'.
+     * 
+     * @var string|null
      */
     private string $channel;
     
     /**
      * The path to the input image file.
      *
-     * @var ?string
+     * @var string|null
      */
     private ?string $inputPath;
 
     /**
      * The directory to save the output SVG file.
      *
-     * @var ?string
+     * @var string|null
      */
     private ?string $outputDir;
     
     /**
      * The name of the output SVG file.
      *
-     * @var ?string
+     * @var string|null
      */
     private ?string $fileName;
-    
+
+    /**
+     * File extension.
+     *
+     * @var string|null
+     */
+    private ?string $fileExtension;
+
+    /**
+     * Base name of the file, without extension... which does not make it the basename, but let's not mention that any further.
+     *
+     * @var string|null
+     */
+    private ?string $fileBase;
 
     /**
      * The minimum number of steps to use in the QR code conversion process.
+     * 
+     * @var int
      */
     public const MIN_STEPS = 21;
     
     /**
      * The default threshold value to use in the QR code conversion process, which must be between 0 and 255.
+     * 
+     * @var int
      */
     public const DEFAULT_THRESHOLD = 127;
     
     /**
      * The default color channel to use in the QR code conversion process, which must be 'red', 'green', or 'blue'.
+     * 
+     * @var string
      */
     public const DEFAULT_CHANNEL = 'red';
 
@@ -72,7 +102,7 @@ class Configuration
      * @param string|null $inputPath The path to the input image file.
      * @param string|null $outputDir The directory to save the output SVG file.
      * @param string|null $fileName The name of the output SVG file.
-     * @param int $steps The number of steps to use in the QR code conversion process, which must be at least 21.
+     * @param int|null $steps The number of steps to use in the QR code conversion process, which must be at least 21.
      * @param int $threshold The threshold value to use in the QR code conversion process, which must be between 0 and 255.
      * @param string $channel The color channel to use in the QR code conversion process, which must be 'red', 'green', or 'blue'.
      */
@@ -80,16 +110,16 @@ class Configuration
         ?string $inputPath = null, 
         ?string $outputDir = null, 
         ?string $fileName = null, 
-        int $steps = self::MIN_STEPS, 
+        ?int $steps = null, 
         int $threshold = self::DEFAULT_THRESHOLD, 
         string $channel = self::DEFAULT_CHANNEL
     ) {
         $this->setSteps($steps);
         $this->setThreshold($threshold);
         $this->setChannel($channel);
-        $this->setFileName($fileName);
         $this->setInputPath($inputPath);
         $this->setOutputDir($outputDir);
+        $this->setFileName($fileName);
     }
 
     // parameters - steps
@@ -97,9 +127,9 @@ class Configuration
         /**
          * Gets the number of steps used in the QR code conversion process.
          *
-         * @return int The number of steps.
+         * @return int|null The number of steps.
          */
-        public function getSteps(): int
+        public function getSteps()
         {
             return $this->steps;
         }
@@ -107,13 +137,13 @@ class Configuration
         /**
          * Sets the number of steps used in the QR code conversion process.
          *
-         * @param int $steps The number of steps to use, which must be at least 21.
+         * @param int|null $steps The number of steps to use, which must be at least 21.
          * @return $this The current Configuration instance for method chaining.
          * @throws \InvalidArgumentException If the number of steps is less than 21.
          */
-        public function setSteps(int $steps): self
+        public function setSteps(?int $steps = null): self
         {
-            if ($steps < self::MIN_STEPS) {
+            if (!is_null($steps) && $steps < self::MIN_STEPS) {
                 throw new \InvalidArgumentException('Steps must be at least 21.');
             }
             $this->steps = $steps;
@@ -200,7 +230,7 @@ class Configuration
         {
             if ($inputPath !== null) {
                 try {
-                    $this->inputPath = PathValidator::validate($inputPath, true, true);
+                    $this->inputPath = PathValidator::validate($inputPath, true, false);
                 } catch (\InvalidArgumentException $e) {
                     throw new \InvalidArgumentException("Invalid input path: " . $e->getMessage());
                 }
@@ -259,6 +289,15 @@ class Configuration
             return $this->fileName;
         }
 
+        public function getFileExtension(): ?string 
+        {
+            return $this->fileExtension;
+        }
+
+        public function getFileBase(): ?string {
+            return $this->fileBase;
+        }
+
         /**
          * Sets the file name used in the QR code conversion process.
          *
@@ -274,8 +313,12 @@ class Configuration
                     throw new \InvalidArgumentException("Invalid file name.");
                 }
                 $this->fileName = $sanitizedFileName;
+                $info = pathinfo($this->getFullInputPath());
+                list($this->fileExtension, $this->fileBase) = [$info['extension'], $info['filename']];
             } else {
                 $this->fileName = null;
+                $this->fileExtension = null;
+                $this->fileBase = null;
             }
             return $this;
         }
@@ -285,14 +328,54 @@ class Configuration
         /**
          * Gets the full path of the file, which is the combination of the input path and the file name.
          *
+         * @param bool $validate Whether file name and existence should be validated or not. False by default.
+         * 
          * @return string|null The full path of the file, or null if the input path or file name is missing.
          * @throws \RuntimeException If the input path or file name is missing, preventing the full path from being generated.
          */
-        public function getFullPath(): ?string
+        public function getFullInputPath(bool $validate = false): ?string
         {
-            if ($this->inputPath === null || $this->outputDir === null || $this->fileName === null) {
+            if ($this->inputPath === null || $this->fileName === null) {
                 throw new \RuntimeException("Unable to generate full path. Input path or file name is missing.");
+            } else {
+                $path = $this->inputPath . DIRECTORY_SEPARATOR . $this->fileName;
+                if($validate) {
+                    try {
+                        PathValidator::validate($path);
+                    } catch(\InvalidArgumentException $e) {
+                        throw new \InvalidArgumentException("File path error. File does not exist or is not accessible.");
+                    }
+                }
             }
-            return $this->inputPath . DIRECTORY_SEPARATOR . $this->fileName;
+            return $path;
+        }
+
+        /**
+         * Gets the full path of the file, which is the combination of the output path and the file name.
+         *
+         * @param string|null $suffix
+         * @param bool $validate Whether file name and existence should be validated or not. False by default.
+         * 
+         * @return string|null The full path of the file, or null if the output path or file name is missing.
+         * @throws \RuntimeException If the output path or file name is missing, preventing the full path from being generated.
+         */
+        public function getFullOutputPath(?string $suffix = null, bool $validate = false): ?string
+        {
+            if ($this->outputDir === null || $this->fileName === null) {
+                throw new \RuntimeException("Unable to generate full path. Output path or file name is missing.");
+            } else {
+                $path = 
+                    is_null($suffix)
+                        ? $this->outputDir . DIRECTORY_SEPARATOR . $this->fileName
+                        : $this->outputDir . DIRECTORY_SEPARATOR . $this->fileBase . "_" . $suffix . "." . $this->fileExtension;
+                if($validate){
+                    try {
+                        PathValidator::validate($path);
+                    } catch(\InvalidArgumentException $e) {
+                        throw new \InvalidArgumentException("File path error. File does not exist or is not accessible: {$path}.");
+                    }
+                }
+            }
+            return $path;
         }
 }
