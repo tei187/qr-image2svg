@@ -6,4 +6,5 @@
     require_once __DIR__ . "/src/Processor.php";
     require_once __DIR__ . "/src/Processors/GD.php";
     require_once __DIR__ . "/src/Processors/ImageMagick.php";
+    require_once __DIR__ . "/src/Processors/Imagick.php";
 ?>
