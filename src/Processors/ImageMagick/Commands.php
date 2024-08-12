@@ -14,6 +14,15 @@ class Commands {
     private static $usePrefix = false;
 
     /**
+     * Determines whether to use the 'convert' tool designation in commands.
+     * 
+     * At some point it has been deprecated, but it's still here for legacy reasons.
+     *
+     * @param bool $state True to use 'convert'.
+     */
+    private static $useConvert = true;
+
+    /**
      * Set whether to use the 'magick' prefix in commands
      *
      * @param bool $state True to use prefix, false otherwise
@@ -21,6 +30,16 @@ class Commands {
      */
     public static function setPrefix(bool $state = false): void {
         self::$usePrefix = $state;
+    }
+
+    /**
+     * Sets whether to use the 'convert' command instead of 'magick' in generated ImageMagick commands.
+     *
+     * @param bool $state True to use 'convert', false to use 'magick' (default).
+     * @return void
+     */
+    public static function setUseConvert(bool $state = true): void {
+        self::$useConvert = $state;
     }
 
     /**
@@ -97,7 +116,7 @@ class Commands {
 
         return
             self::resolvePrefix() .
-            "convert {$input} " . 
+            (self::$useConvert ? "convert" : "") ." {$input} " . 
             "-interpolate Integer " . 
             "-filter point " . 
             "-resize {$w}x{$h} " . 
@@ -114,7 +133,7 @@ class Commands {
     public static function trimImageThreshold(string $path): string {
         return
             self::resolvePrefix() .
-            "convert {$path} " .
+            (self::$useConvert ? "convert" : "") ." {$path} " .
             "-color-threshold \"RGB(200,200,200)-RGB(255,255,255)\" " .
             "-format \"%@\" " .
             "info:";
@@ -131,7 +150,7 @@ class Commands {
     public static function trimImageCrop(string $input, array $pos, string $output): string {
         return
             self::resolvePrefix() . 
-            "convert {$input} " . 
+            (self::$useConvert ? "convert" : "") ." {$input} " . 
             "-crop {$pos[0]}x{$pos[1]}+{$pos[2]}+{$pos[3]} " . 
             $output;
     }
@@ -147,7 +166,7 @@ class Commands {
     public static function suggestTilesThreshold(string $input, int $threshold, string $output): string {
         return
             self::resolvePrefix() . 
-            "convert {$input} " .
+            (self::$useConvert ? "convert" : "") ." {$input} " .
             "-color-threshold \"RGB({$threshold},{$threshold},{$threshold})-RGB(255,255,255)\" " .
             "-trim " . 
             $output;

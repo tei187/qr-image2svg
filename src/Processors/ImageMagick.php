@@ -14,17 +14,8 @@ use tei187\QrImage2Svg\Processors\ImageMagick\Commands;
  * borders if necessary.
  * 
  * The `output()` method generates the final SVG image based on the processed image data.
- * 
- * @todo requires a rewrite for 'temp' and 'optimized' - needs a discriminator to not overwrite simultaneous runs.
  */
 class ImageMagick extends Processor {
-    /**
-     * Indicates whether the `magick` command prefix should be used (environment specific).
-     * 
-     * @var bool
-     */
-    private $usePrefix = true;
-
     /**
      * Indicates whether the tile row count suggestion method was applied and ran correctly.
      *
@@ -36,25 +27,16 @@ class ImageMagick extends Processor {
      * Constructs an ImageMagick converter instance with the given configuration.
      *
      * @param Configuration $config The configuration to use for the converter.
-     * @param bool $trimImage Whether to trim the image after conversion.
-     * @param bool $usePrefix Whether to use the 'magick' command prefix (environment specific).
      */
-    function __construct(Configuration $config, bool $trimImage = false, bool $usePrefix = true) {
+    function __construct(Configuration $config, bool $trimImage = false) {
         $this->config = $config;
 
-        if($usePrefix) {
-            $this->usePrefix = true;
-            Commands::setPrefix($usePrefix);
-        }
-
+        Commands::setPrefix( $config->getImMagickPrefixUse() );
+        Commands::setUseConvert( $config->getImConvertPrefixUse() );
+        
         if($this->config->getFullInputPath() !== null) {
-            if($trimImage) {
-                $this->_trimImage();
-            }
+            if($trimImage) $this->_trimImage();
             $this->_setImageDimensions( $this->_retrieveImageSize($this->config->getFullInputPath()) ); // set image dimensions
-            /*$this->config->getSteps() !== null  // optimize on constructor
-                ? $this->_optimizeSizePerPixelsPerTile() 
-                : null;*/
         }
     }
 
@@ -85,7 +67,6 @@ class ImageMagick extends Processor {
      * @return self The current instance of the ImageMagick converter.
      */
     public function _setPrefixUse(bool $flag = true) : self {
-        $this->usePrefix = $flag;
         Commands::setPrefix($flag);
         return $this;
     }
@@ -102,44 +83,37 @@ class ImageMagick extends Processor {
         // generate IM-specific syntax for each tile
         $commandParts = [];
         foreach($this->tilesData as $k => $values) {
-            $commandParts[] = 
-                Commands::colorAtPixel( 
-                    $values['tileMiddle']['x'], 
-                    $values['tileMiddle']['y'] );
+            $commandParts[] = Commands::colorAtPixel($values['tileMiddle']['x'], $values['tileMiddle']['y']);
         }
-        // chunk IM-specific syntax array (by low value of 100, due to shell limit)
-        $commandChunks = array_chunk($commandParts, 100);
-        unset($commandParts);
-
-        // getting output per chunk and merging it to $output variable
-        $output = "";
-
+    
+        // chunk IM-specific syntax array (by low value of 150, due to shell limit)
+        $commandChunks = array_chunk($commandParts, 150);
+        $tempFile = tempnam(sys_get_temp_dir(), 'qr_colors_');
+    
         foreach($commandChunks as $chunk) {
             $part = implode("..", $chunk);
-            $output .= shell_exec(
-                Commands::colorAtPixelsChain( 
-                    $this->config->getFullOutputPath('optimized'), 
-                    $part )) . "..";
-            
+            $command = Commands::colorAtPixelsChain($this->config->getFullOutputPath('optimized'), $part);
+            file_put_contents($tempFile, shell_exec($command) . "..", FILE_APPEND);
         }
-        unset($commandChunks, $chunk);
-
+    
+        $output = file_get_contents($tempFile);
+        unlink($tempFile);
+    
         // mapping output
-        $temp = array_map(
-            function($v) {
-                if($v !== null && strlen(trim($v)) > 0) {
-                    preg_match_all("/\d+/", $v, $match);
-                    return $match[0];
-                }
-            }, explode("..", trim($output, "."))
-        );
-        unset($output, $match);
-
+        $colorData = array_map(function($v) {
+            if($v !== null && strlen(trim($v)) > 0) {
+                preg_match_all("/\d+/", $v, $match);
+                return $match[0];
+            }
+            return null;
+        }, explode("..", trim($output, ".")));
+    
         // save values
-        foreach($temp as $k => $v) {
-            $this->tilesData[$k]['values'] = $v;
+        foreach($colorData as $k => $v) {
+            if ($v !== null) {
+                $this->tilesData[$k]['values'] = $v;
+            }
         }
-        unset($temp, $k, $v);
     }
 
     /**
@@ -240,8 +214,6 @@ class ImageMagick extends Processor {
      * Trims white image border, based on a simulated 200-255 RGB threshold.
      *
      * @return boolean True if the image was successfully trimmed, false otherwise.
-     * 
-     * @todo should this really overwrite the current file?
      */
     protected function _trimImage() : bool {
         $g = shell_exec( Commands::trimImageThreshold($this->config->getFullInputPath()) );
@@ -255,9 +227,9 @@ class ImageMagick extends Processor {
                 Commands::trimImageCrop(
                     $this->config->getFullInputPath(), 
                     $c, 
-                    $this->config->getFullInputPath()));
+                    $this->config->getFullOutputPath('trimmed')));
 
-            $this->_setImageDimensions( $this->_retrieveImageSize($this->config->getFullInputPath()) );
+            $this->_setImageDimensions( $this->_retrieveImageSize( $this->config->getFullOutputPath('trimmed') ) );
             return true;
         }
         return false;
@@ -331,7 +303,7 @@ class ImageMagick extends Processor {
                 $points[] = Commands::colorAtPixel($k, $j); 
             }
 
-            $pointsChunks = array_chunk($points, 50); unset($points); $output = "";
+            $pointsChunks = array_chunk($points, 100); unset($points); $output = "";
             foreach($pointsChunks as $chunk) {
                 $part = implode("..", $chunk);
                 $output .= shell_exec( Commands::colorAtPixelsChain($path, $part) ) . "..";
@@ -412,13 +384,13 @@ class ImageMagick extends Processor {
 
         if(!$this->image['optimized']) 
             $this->_optimizeSizePerPixelsPerTile();
-    
+
         $this->_setTilesData();
         $this->_setTilesValues();
-        
         $this->_probeTilesForColor();
-        $this->tilesData = null;
-        return $this->generateSVG();
+        $this->tilesData = [];
+        $result = $this->generateSVG();
+        return $result;    
     }
 
     /**
@@ -476,7 +448,7 @@ class ImageMagick extends Processor {
         for($x = 0; $x <= $maxMarkerLength; $x++) {
             $points[] = Commands::colorAtPixel($x, $y);
         }
-        $pointsChunks = array_chunk($points, 50);
+        $pointsChunks = array_chunk($points, 100);
         unset($points);
 
         // - chunk to limit
