@@ -45,7 +45,7 @@ class Configuration
      *
      * @var string|null
      */
-    private ?string $inputPath;
+    private ?string $inputDir;
 
     /**
      * The directory to save the output SVG file.
@@ -69,6 +69,21 @@ class Configuration
     private ?string $fileExtension;
 
     /**
+     * Determines whether to use the "convert" prefix when processing images through ImageMagick command line prompt.
+     *
+     * @var bool
+     */
+    private bool $imUseConvertPrefix = true;
+
+    /**
+     * Determines whether to use the "magick" prefix when processing images through ImageMagick command line prompt.
+     *
+     * @var bool
+     */
+    private bool $imUseMagickPrefix = true;
+    
+
+    /**
      * Base name of the file, without extension... which does not make it the basename, but let's not mention that any further.
      *
      * @var string|null
@@ -81,6 +96,15 @@ class Configuration
      * @var int
      */
     public const MIN_STEPS = 21;
+
+    /**
+     * The maximum number of steps to use in the QR code conversion process.
+     * 
+     * This constant represents the maximum number of steps that can be used in the QR code conversion process.
+     *
+     * @var int
+     */
+    public const MAX_STEPS = 177;
     
     /**
      * The default threshold value to use in the QR code conversion process, which must be between 0 and 255.
@@ -99,25 +123,27 @@ class Configuration
     /**
      * Constructs a new Configuration instance with the specified parameters.
      *
-     * @param string|null $inputPath The path to the input image file.
+     * @param string|null $inputDir The directory to input the image file from.
      * @param string|null $outputDir The directory to save the output SVG file.
-     * @param string|null $fileName The name of the output SVG file.
+     * @param string|null $fileName The name of the input image file.
      * @param int|null $steps The number of steps to use in the QR code conversion process, which must be at least 21.
      * @param int $threshold The threshold value to use in the QR code conversion process, which must be between 0 and 255.
      * @param string $channel The color channel to use in the QR code conversion process, which must be 'red', 'green', or 'blue'.
      */
     function __construct(
-        ?string $inputPath = null, 
+        ?string $inputDir = null, 
         ?string $outputDir = null, 
         ?string $fileName = null, 
         ?int $steps = null, 
         int $threshold = self::DEFAULT_THRESHOLD, 
-        string $channel = self::DEFAULT_CHANNEL
+        string $channel = self::DEFAULT_CHANNEL,
+        bool $imUseMagickPrefix = true,
+        bool $imUseConvertPrefix = true,
     ) {
         $this->setSteps($steps);
         $this->setThreshold($threshold);
         $this->setChannel($channel);
-        $this->setInputPath($inputPath);
+        $this->setInputDir($inputDir);
         $this->setOutputDir($outputDir);
         $this->setFileName($fileName);
     }
@@ -126,6 +152,9 @@ class Configuration
 
         /**
          * Gets the number of steps used in the QR code conversion process.
+         * 
+         * Steps are the amount of square tiles in vertical or horizontal alignment, otherwise
+         * called modules.
          *
          * @return int|null The number of steps.
          */
@@ -135,16 +164,23 @@ class Configuration
         }
 
         /**
-         * Sets the number of steps used in the QR code conversion process.
+         * Sets the number of steps (modules) used in the QR code conversion process.
+         * 
+         * Set it manually only if you know the exact number of tiles in rows or columns within the
+         * QR code, ( VERSION * 4 + 17 ). Otherwise it is advised to launch main output process
+         * with suggest tiles quantity option turned on.
          *
          * @param int|null $steps The number of steps to use, which must be at least 21.
          * @return $this The current Configuration instance for method chaining.
          * @throws \InvalidArgumentException If the number of steps is less than 21.
+         * @throws \InvalidArgumentException If the number of steps is greater than 177.
          */
         public function setSteps(?int $steps = null): self
         {
             if (!is_null($steps) && $steps < self::MIN_STEPS) {
                 throw new \InvalidArgumentException('Steps must be at least 21.');
+            } elseif (!is_null($steps) && $steps > self::MAX_STEPS) {
+                throw new \InvalidArgumentException('Steps must be at most 177.');
             }
             $this->steps = $steps;
             return $this;
@@ -210,32 +246,32 @@ class Configuration
     // parameters - input path
 
         /**
-         * Gets the input path used in the QR code conversion process.
+         * Gets the input directory path used in the QR code conversion process.
          *
          * @return string|null The input path, or null if not set.
          */
-        public function getInputPath(): ?string
+        public function getInputDir(): ?string
         {
-            return $this->inputPath;
+            return $this->inputDir;
         }
 
         /**
          * Sets the input path used in the QR code conversion process.
          *
-         * @param string|null $inputPath The input path, or null to clear the input path.
+         * @param string|null $inputDir The input directory path, or null to clear the input path.
          * @return $this The current Configuration instance for method chaining.
          * @throws \InvalidArgumentException If the input path is invalid.
          */
-        public function setInputPath(?string $inputPath): self
+        public function setInputDir(?string $inputDir): self
         {
-            if ($inputPath !== null) {
+            if ($inputDir !== null) {
                 try {
-                    $this->inputPath = PathValidator::validate($inputPath, true, false);
+                    $this->inputDir = PathValidator::validate($inputDir, true, false);
                 } catch (\InvalidArgumentException $e) {
                     throw new \InvalidArgumentException("Invalid input path: " . $e->getMessage());
                 }
             } else {
-                $this->inputPath = null;
+                $this->inputDir = null;
             }
             return $this;
         }
@@ -335,10 +371,10 @@ class Configuration
          */
         public function getFullInputPath(bool $validate = false): ?string
         {
-            if ($this->inputPath === null || $this->fileName === null) {
+            if ($this->inputDir === null || $this->fileName === null) {
                 throw new \RuntimeException("Unable to generate full path. Input path or file name is missing.");
             } else {
-                $path = $this->inputPath . DIRECTORY_SEPARATOR . $this->fileName;
+                $path = $this->inputDir . DIRECTORY_SEPARATOR . $this->fileName;
                 if($validate) {
                     try {
                         PathValidator::validate($path);
@@ -377,5 +413,48 @@ class Configuration
                 }
             }
             return $path;
+        }
+    
+    // parameters - ImageMagick-specific (cmd prompt)
+
+    
+        /**
+         * Sets whether the ImageMagick 'magick' prefix should be used.
+         *
+         * @param bool $use Whether the ImageMagick prefix should be used.
+         * @return $this The current instance of the Configuration object, for method chaining.
+         */
+        public function setImMagickPrefixUse(bool $use): self {
+            $this->imUseMagickPrefix = $use;
+            return $this;
+        }
+
+        /**
+         * Sets whether the ImageMagick 'convert' command prefix should be used.
+         *
+         * @param bool $use Whether the ImageMagick convert command prefix should be used.
+         * @return $this For method chaining.
+         */
+        public function setImConvertPrefixUse(bool $use): self {
+            $this->imUseConvertPrefix = $use;
+            return $this;
+        }
+
+        /**
+         * Gets whether the ImageMagick 'magick' prefix should be used.
+         *
+         * @return bool True if the ImageMagick prefix should be used, false otherwise.
+         */
+        public function getImMagickPrefixUse(): bool {
+            return $this->imUseMagickPrefix;
+        }
+
+        /**
+         * Gets whether the ImageMagick 'convert' command prefix should be used.
+         *
+         * @return bool True if the ImageMagick convert command prefix should be used, false otherwise.
+         */
+        public function getImConvertPrefixUse(): bool {
+            return $this->imUseConvertPrefix;
         }
 }
