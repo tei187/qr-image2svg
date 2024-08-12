@@ -3,9 +3,9 @@
 namespace tei187\QrImage2Svg\Processors;
 
 use GdImage;
-use tei187\QrImage2Svg\Utilities\PathValidator;
 use tei187\QrImage2Svg\Configuration;
 use tei187\QrImage2Svg\Processor;
+use tei187\QrImage2Svg\Resources\MIME;
 
 /**
  * The `GD` class is a concrete implementation of the `Converter` interface that uses the GD library to process image files.
@@ -54,17 +54,16 @@ class GD extends Processor {
      * @param string|null $path The file path of the image to create. If null, the full path from the configuration will be used.
      * @return resource|\GdImage|false The created image resource, or false on failure.
      * 
-     * @todo probably would be better to use mime type checks?
      */
     static protected function _createFrom($path) {
-        $ext = pathinfo($path, PATHINFO_EXTENSION);
-        switch(strtolower($ext)) {
-            case "png":   $img =  imagecreatefrompng($path); break;
-            case "jpg":   $img = imagecreatefromjpeg($path); break;
-            case "jpeg":  $img = imagecreatefromjpeg($path); break;
-            case "gif":   $img =  imagecreatefromgif($path); break;
-            case "webp":  $img = imagecreatefromwebp($path); break;
-            default;      $img = false;
+        switch(MIME::getType($path)) {
+            case "image/bmp":  $img = imagecreatefrombmp($path); break;
+            case "image/gif":  $img = imagecreatefromgif($path); break;
+            case "image/jpeg":
+            case "image/jp2":  $img = imagecreatefromjpeg($path); break;
+            case "image/png":  $img = imagecreatefrompng($path); break;
+            case "image/webp": $img = imagecreatefromwebp($path); break;
+            default;           $img = false;
         }
         return $img;
     }
@@ -173,18 +172,16 @@ class GD extends Processor {
      * If the file extension is not recognized, the method will return `false`.
      *
      * @return void|false `false` if the file format is not supported, otherwise `void`.
-     * 
-     * @todo just as in some other place - consider mime type check
      */
     protected function _saveImage($suffix = null) {
-        $ext = pathinfo($this->config->getFullInputPath(), PATHINFO_EXTENSION);
-        switch(strtolower($ext)) {
-            case "png":    imagepng($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
-            case "jpg":   imagejpeg($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
-            case "jpeg":  imagejpeg($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
-            case "gif":    imagegif($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
-            case "webp":  imagewebp($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
-            default;      return false;
+        switch(MIME::getType($this->config->getFullInputPath())) {
+            case "image/bmp":   imagebmp($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
+            case "image/gif":   imagegif($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
+            case "image/jpeg":
+            case "image/jp2":  imagejpeg($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
+            case "image/png":   imagepng($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
+            case "image/webp": imagewebp($this->image['obj'], $this->config->getFullOutputPath($suffix ?? 'optimized')); break;
+            default; return false;
         }
     }
 
@@ -229,14 +226,14 @@ class GD extends Processor {
         }
 
         if($dst !== false) {
-            $ext = pathinfo($path, PATHINFO_EXTENSION);
-            switch(strtolower($ext)) {
-                case "png":  imagepng( $dst, $path); break;
-                case "jpg":  imagejpeg($dst, $path); break;
-                case "jpeg": imagejpeg($dst, $path); break;
-                case "gif":  imagegif( $dst, $path); break;
-                case "webp": imagewebp($dst, $path); break;
-                default;      return false;
+            switch(MIME::getType($path)) {
+                case "image/bmp":  imagebmp( $dst, $path); break;
+                case "image/gif":  imagegif( $dst, $path); break; 
+                case "image/jpeg":
+                case "image/jp2":  imagejpeg($dst, $path); break;
+                case "image/png":  imagepng( $dst, $path); break;
+                case "image/webp": imagewebp($dst, $path); break;
+                default; return false;
             }
         }
         return $dst;
@@ -254,20 +251,25 @@ class GD extends Processor {
      */
     private function _applyThreshold($threshold) {
         $img = $this->image['obj'];
+        $width = imagesx($img);
+        $height = imagesy($img);
 
-        $xS = imagesx($img);
-        $yS = imagesy($img);
+        // create a grayscale palette
+        $palette = [];
+        for ($i = 0; $i < 256; $i++) {
+            $palette[$i] = imagecolorallocate($img, $i, $i, $i);
+        }
 
-        for($x = 0; $x < $xS; $x++) {
-            for($y = 0; $y < $yS; $y++) {
-                $c = imagecolorsforindex($img, imagecolorat($img, $x, $y));
-                unset($c['alpha']);
-                $avg = round(array_sum($c) / count($c), 0);
-                if($avg > $threshold) {
-                    imagesetpixel($img, $x, $y, imagecolorallocate($img, 255, 255, 255));
-                } else {
-                    imagesetpixel($img, $x, $y, imagecolorallocate($img, 0, 0, 0));
-                }
+        // apply threshold
+        for ($y = 0; $y < $height; $y++) {
+            for ($x = 0; $x < $width; $x++) {
+                $rgb = imagecolorat($img, $x, $y);
+                $r = ($rgb >> 16) & 0xFF;
+                $g = ($rgb >> 8) & 0xFF;
+                $b = $rgb & 0xFF;
+                $gray = (int) (($r + $g + $b) / 3);
+                $color = ($gray > $threshold) ? 255 : 0;
+                imagesetpixel($img, $x, $y, $palette[$color]);
             }
         }
 
@@ -412,7 +414,7 @@ class GD extends Processor {
         $this->_setTilesData();
         $this->_setTilesValues();
         $this->_probeTilesForColor();
-        $this->tilesData = null;
+        $this->tilesData = [];
         return $this->generateSVG();
     }
 
