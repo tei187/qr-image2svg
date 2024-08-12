@@ -20,6 +20,8 @@ abstract class Processor {
      * Stores the last error that occurred, if any.
      *
      * This property is used to track any errors that may have occurred during the execution of the Processor class.
+     * 
+     * @var string|null
      */
     protected ?string $lastError = null;
     
@@ -28,6 +30,8 @@ abstract class Processor {
      *
      * This property holds the Configuration object that was provided when constructing the Processor instance.
      * It is used to access the various configuration settings that control the behavior of the Processor.
+     * 
+     * @var Configuration
      */
     protected Configuration $config;
     
@@ -38,6 +42,8 @@ abstract class Processor {
      * The 'x' and 'y' keys represent the width and height, respectively. The 'obj' key is used to
      * store an optional object associated with the image, and the 'optimized' key indicates whether
      * the image has been optimized.
+     * 
+     * @var array
      */
     protected array $image = [
         'x' => null,
@@ -52,8 +58,10 @@ abstract class Processor {
      * This array holds the data for each tile in the image being processed by the Processor class.
      * The data for each tile may include information such as its position, size, or other relevant
      * details required for the conversion process.
+     * 
+     * @var array
      */
-    protected ?array $tilesData = [];
+    protected array $tilesData = [];
     
     /**
      * Stores a matrix of filled tiles for the image.
@@ -61,6 +69,8 @@ abstract class Processor {
      * This array keeps track of which tiles in the image have been filled during the conversion process.
      * The matrix is indexed by the tile's x and y coordinates, with each element indicating whether the
      * corresponding tile is filled (true) or not (false).
+     * 
+     * @var array
      */
     protected array $filledTileMatrix = [];
     
@@ -70,6 +80,8 @@ abstract class Processor {
      * This property holds the calculated number of pixels per tile, which is used to optimize the size of the image
      * during the conversion process. The value is determined based on the image dimensions and the configured number
      * of steps for the conversion.
+     * 
+     * @var int|null
      */
     protected ?int $pixelsPerTile = null;
     
@@ -79,8 +91,10 @@ abstract class Processor {
      * This constant defines the minimum number of pixels that should be used for each tile
      * during the image conversion. The Processor class will ensure that the number of pixels
      * per tile is at least this value, by rescaling the image if necessary.
+     * 
+     * @var int
      */
-    public const MIN_PIXELS_PER_TILE = 10;
+    protected const MIN_PIXELS_PER_TILE = 10;
 
     /**
      * Constructs a new Processor instance with the provided Configuration.
@@ -92,7 +106,7 @@ abstract class Processor {
     }
 
     /**
-     * Checks if the file at the given path has a valid MIME type.
+     * Checks if the file at the given path has a valid MIME type and if it is supported by the Processor.
      *
      * @param string $path The path to the file to check.
      * @return bool True if the file has a valid MIME type, false otherwise.
@@ -120,9 +134,10 @@ abstract class Processor {
      * Optimizes the size of the image based on the configured number of steps and the image dimensions.
      * 
      * This method calculates the number of pixels per tile, ensuring that it is at least the minimum
-     * required pixels per tile. If the calculated pixels per tile is different from the original, the
-     * image is rescaled to match the new tile size. The `optimized` flag is set to indicate that the
-     * image has been optimized.
+     * required pixels per tile. The mage is rescaled to match the new tile size. The `optimized` flag
+     * is set to indicate that the image has been optimized.
+     * 
+     * @return void
      */
     protected function _optimizeSizePerPixelsPerTile(): void
     {
@@ -137,14 +152,12 @@ abstract class Processor {
             // adjusts pixels per tile to be at least 10
             $this->pixelsPerTile = max($this->pixelsPerTile, self::MIN_PIXELS_PER_TILE);
 
-            // rescale image if needed
-            //if ($perTile !== $this->pixelsPerTile) {
-                $this->_rescaleImage(
-                    $this->config->getSteps() * $this->pixelsPerTile, 
-                    $this->config->getSteps() * $this->pixelsPerTile,
-                    "optimized"
-                );
-            //}
+            // rescale image to match new tile size
+            $this->_rescaleImage(
+                $this->config->getSteps() * $this->pixelsPerTile, 
+                $this->config->getSteps() * $this->pixelsPerTile,
+                "optimized"
+            );
 
             // set optimized flag
             $this->image['optimized'] = true;
@@ -159,6 +172,8 @@ abstract class Processor {
      * This method populates the `$tilesData` array with information about each tile in the image, including
      * the coordinates where the tile should be rendered, the coordinates of the middle of the tile, and a
      * placeholder for the tile's values.
+     * 
+     * @return void
      */
     protected function _setTilesData() : void {
         $this->tilesData = [];
@@ -202,8 +217,8 @@ abstract class Processor {
         $svgStr .= "\t</g>\r\n";
         $svgStr .= "</svg>";
     
-        $path = $this->config->getOutputDir() !== null ? $this->config->getOutputDir() : null;
-        file_put_contents($path . DIRECTORY_SEPARATOR . "output.svg", $svgStr);
+        $path = $this->config->getOutputDir() !== null ? $this->config->getOutputDir() : $this->config->getInputDir();
+        file_put_contents($path . DIRECTORY_SEPARATOR . $this->config->getFileBase() . ".svg", $svgStr);
         return $svgStr;
     }
 
@@ -277,14 +292,7 @@ abstract class Processor {
     // ---
 
     // ABSTRACT METHODS - start
-        /**
-         * Sets the values of the tiles used by the converter.
-         *
-         * This is an abstract method that must be implemented by concrete converter classes.
-         * It is responsible for setting the values of the tiles that will be used during the
-         * conversion process.
-         */
-        /**
+                /**
          * Sets the values of the tiles used by the converter.
          *
          * This is an abstract method that must be implemented by concrete converter classes.
