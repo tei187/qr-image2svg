@@ -22,7 +22,7 @@ The main reason to create this solution was my day-to-day job, where I have to h
 * ### **Installation**
   * Composer
   ```sh
-  composer require tei187/qr-image2svg:dev-master
+  composer require tei187/qr-image2svg
   ```
   * Manual (package download)
   ```php
@@ -31,33 +31,77 @@ The main reason to create this solution was my day-to-day job, where I have to h
   ?>
   ```
 
-* ### **Parameters**
-  Let's assume we have a few params as following:
-  * `$inputFile` - the accessible path leading to the image you want to convert,
-  * `$outputDir` - the accessible path to directory in which output will be saved,
-  * `$stepsPerAxis` - integer value describing how many tiles are there in a given axis of QR code,
-  * `$threshold` - integer value describing the limit over which the tile will be treated as blank.
-  * `$trim` - boolean value describing whether or not the image should be trimmed (remove white border from around QR).
+* ### **Configuration**
 
-* ### **GD**
+  Configuration class holds config on which the process will be based. It involves the following:
+  * **inputDir** - path to the image file to be converted
+  * **outputDir** - path to the directory where the converted file will be saved
+  * **filename** - name of the input file
+  * **steps** - number of steps per axis (how many tiles per axis are there in the QR image)
+  * **threshold** - threshold value (0-255)
+  * **channel*** - color channel (red, green, blue)
+  * **imUseMagickPrefix** - prefix for ImageMagick commands *(IM-specific)*
+  * **imUseConvertPrefix** - prefix for ImageMagick commands *(IM-specific)*
+  
+  #### Example
   ```php
   <?php
-    use tei187\QrImage2Svg\Converter\GD as GD;
-    $t = new GD($inputFile, $outputDir, $stepsPerAxis, $threshold, $trim);
-    echo $t->output();
-    // saves the file to specified directory and also returns string with SVG.
-  ?>
+    use tei187\QrImage2Svg\Configuration;
+
+    $config = new Configuration(
+      "/path/to/input",  // input path
+      "/path/to/output", // output path
+      "input.png",       // input file name
+      null,              // no pre-assigned steps per axis
+      200,               // threshold
+      'red',             // red channel for threshold
+      false,             // dont use 'magick' prefix in command line
+      true               // use 'convert' prefix in command line
+    );
+
+    // (...)
   ```
-* ### **ImageMagick**
+
+
+* ### **Creating objects**
   ```php
-  <?php
-    use tei187\QrImage2Svg\Converter\ImageMagick as ImageMagick;
-    $t = new ImageMagick($inputFile, $outputDir, $stepsPerAxis, $threshold, $trim, $prefix);
-    echo $t->output();
-    // saves the file to specified directory and also returns string with SVG.
-  ?>
+    // (...)
+
+    use tei187\QrImage2Svg\Processor\GD as GD;
+    use tei187\QrImage2Svg\Processor\ImageMagick as ImageMagick;
+    use tei187\QrImage2Svg\Processor\Imagick as Imagick;
+
+    // GD-based library processor
+    $gd = new GD($config);
+
+    // ImageMagick-based command line prompt processor
+    $im = new ImageMagick($config);
+
+    // Imagick-based extension processor
+    $i  = new Imagick($config);
+
+    // (...)
   ```
-  IM's class has one more parameter in the constructor: `$prefix` being a prefix flag - if true it adds `'magick '` string to each command (I've found it to be environment specific thing, especially with older installments, but by default left `TRUE`). Also, do have in mind that in many cases IM can be slower than GD, because in GD version the image resource becomes assigned as a member in the class (`$this->image['obj']`), while IM continuously refers to the file.
+
+* ### **Converting**
+  ```php
+    // (...)
+    
+    // GD
+    $gd->output();
+
+    // IM
+    $im->output();
+
+    // Imagick
+    $i->output();
+    
+  ```
+  These will output a generated SVG file in the output directory with the same name as the input file.
+
+  **Note:**
+  GD and Imagick processors should be considered fastest. ImageMagick processor is slower, due to constantly referencing files on-disk, while the other two are in-memory only. As such, ImageMagick processor should be used as a fallback only when GD or Imagick are not available. Also, ImageMagick processor gives very varied results in performance as well as creates temporary files on-disk, which can be problematic in some cases. It is recommended to use GD or Imagick processors if possible.
+
 
 ---
 
@@ -106,6 +150,7 @@ The main reason to create this solution was my day-to-day job, where I have to h
 * **PHP 7.4** or higher
 * one of the following processors:
   * **GD** extension
+  * **Imagick** extension
   * **ImageMagick** 
   
   *(tested on **7.0.8-7 Q16 x64** and **7.1.0-2 Q16 x64**, did not seem to work properly on versions lower than 7.0 and any version of GraphicsMagick)*
