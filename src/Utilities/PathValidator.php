@@ -34,19 +34,29 @@ class PathValidator
     /**
      * Determines whether caching of realpath() results is enabled.
      *
-     * When enabled, the realpath() function calls are cached to improve performance.
+     * When enabled, the realpath() f22unction calls are cached to improve performance.
      */
     private static $cachingEnabled = true;
 
+    /**
+     * Stores the temporary directory path.
+     *
+     * If not set, uses the system's default temporary directory.
+     *
+     * @var string|null
+     */
+    private static $tempDirectory = null;
+
     // METHODS
 
+    // - setters
         /**
          * Sets the root directory for path validation.
          *
-         * @param string $directory The root directory path
+         * @param string|null $directory The root directory path
          * @throws \InvalidArgumentException If the directory is invalid
          */
-        public static function setRootDirectory(string $directory): void
+        public static function setRootDirectory(?string $directory): void
         {
             $realPath = self::getRealPath($directory);
             if ($realPath === false || !is_dir($realPath)) {
@@ -55,6 +65,17 @@ class PathValidator
             self::$rootDirectory = $realPath;
         }
 
+        /**
+         * Sets the maximum allowed length for file paths.
+         *
+         * @param int $maxPathLength The maximum allowed length for file paths, defaults to 1000 characters.
+         * @return void
+         */
+        public static function setMaxPathLength(int $maxPathLength = 1000): void {
+            self::$maxPathLength = $maxPathLength;
+        }
+
+    // - validators and sanitizers
         /**
          * Initializes the maximum path length based on the operating system.
          * 
@@ -142,6 +163,8 @@ class PathValidator
                 throw new \InvalidArgumentException("Symlinks are not allowed: $path");
             }
 
+            self::addPathToCache($path);
+
             return $realPath;
         }
 
@@ -217,13 +240,61 @@ class PathValidator
                 return self::$realpathCache[$path];
             }
         
-            $realPath = realpath($path);
-            
-            if (self::$cachingEnabled) {
-                self::$realpathCache[$path] = $realPath;
-                self::manageCacheSize();
+            return realpath($path);
+        }
+
+        /**
+         * Adds a path to the realpath cache, optionally specifying the real path.
+         *
+         * This method is used to cache the real path of a given path, which can improve
+         * performance when repeatedly accessing the same path. If the real path is not
+         * provided, it will be retrieved using the `getRealPath()` method.
+         *
+         * @param string $path The path to add to the cache.
+         * @param ?string $realPath The real path of the given path, or null to retrieve it.
+         * @return void
+         */
+        public static function addPathToCache(string $path, ?string $realPath = null): void {
+            if ($realPath === null) {
+                $realPath = self::getRealPath($path);
             }
-        
-            return $realPath;
+            self::$realpathCache[$path] = $realPath;
+            self::manageCacheSize();
+        }
+
+    // TEMP DIRECTORY HANDLING
+
+        /**
+         * Sets the temporary directory to be used by the application.
+         *
+         * If no directory is provided, the system's temporary directory will be used.
+         * The provided directory will be validated to ensure it is a valid, existing directory.
+         * If the directory is invalid, an `InvalidArgumentException` will be thrown.
+         *
+         * @param ?string $directory The temporary directory to use, or null to use the system's temp directory.
+         * @return void
+         */
+        static public function setTempDirectory(?string $directory = null): void {
+            if($directory === null) {
+                $directory = sys_get_temp_dir();
+            }
+            $directory = self::validate($directory, true, false);
+            $realPath = self::getRealPath($directory);
+            if ($realPath === false || !is_dir($realPath)) {
+                throw new \InvalidArgumentException("Invalid temporary directory: $directory");
+            }
+            self::$tempDirectory = $realPath;
+        }
+
+        /**
+         * Gets the temporary directory used by the application.
+         *
+         * @return ?string The temporary directory, or null if not set.
+         */
+        static public function getTempDirectory(): ?string {
+            if(self::$tempDirectory === null) {
+                self::setTempDirectory();
+            }
+            return self::$tempDirectory;
         }
 }
