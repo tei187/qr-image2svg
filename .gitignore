@@ -1,5 +1,5 @@
 /vendor/
 /vendor
-/process
+/tests
 phpDocumentor.phar
 .phpdoc
