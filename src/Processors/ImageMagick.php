@@ -5,6 +5,7 @@ namespace tei187\QrImage2Svg\Processors;
 use tei187\QrImage2Svg\Configuration;
 use tei187\QrImage2Svg\Processor;
 use tei187\QrImage2Svg\Processors\ImageMagick\Commands;
+use tei187\QrImage2Svg\Utilities\PathValidator;
 
 /**
  * The class provides methods for creating, rescaling, and saving image files, as well as for analyzing the image data to determine 
@@ -22,6 +23,12 @@ class ImageMagick extends Processor {
      * @var bool
      */
     private $hasSuggested = false;
+
+    private $optimizedImagePath = null;
+
+    private $tempImagePath = null;
+
+    private $trimmedImagePath = null;
 
     /**
      * Constructs an ImageMagick converter instance with the given configuration.
@@ -88,11 +95,11 @@ class ImageMagick extends Processor {
     
         // chunk IM-specific syntax array (by low value of 150, due to shell limit)
         $commandChunks = array_chunk($commandParts, 150);
-        $tempFile = tempnam(sys_get_temp_dir(), 'qr_colors_');
+        $tempFile = tempnam( PathValidator::getTempDirectory(), $this->config->getFileBase() . '_qr_colors_');
     
         foreach($commandChunks as $chunk) {
             $part = implode("..", $chunk);
-            $command = Commands::colorAtPixelsChain($this->config->getFullOutputPath('optimized'), $part);
+            $command = Commands::colorAtPixelsChain($this->optimizedImagePath, $part);
             file_put_contents($tempFile, shell_exec($command) . "..", FILE_APPEND);
         }
     
@@ -183,7 +190,7 @@ class ImageMagick extends Processor {
         return 
             explode( 
                 "(", 
-                shell_exec( Commands::colorType( $this->config->getFullOutputPath('optimized') ) ) 
+                shell_exec( Commands::colorType( $this->optimizedImagePath ) ) 
             )[0];
     }
 
@@ -198,15 +205,13 @@ class ImageMagick extends Processor {
      * @return void
      */
     protected function _rescaleImage(int $w, int $h, ?string $suffix = null) {
-        $path = is_null($suffix)
-            ? $this->config->getFullOutputPath('temp')
-            : $this->config->getFullOutputPath($suffix);
+        $this->optimizedImagePath = tempnam( PathValidator::getTempDirectory(),  $this->config->getFileBase()."_optimized" );
 
         $input = $this->hasSuggested
-            ? $this->config->getFullOutputPath('temp')
+            ? $this->tempImagePath
             : $this->config->getFullInputPath();
         
-        shell_exec( Commands::rescaleImage( $input, $w, $h, $path ) );
+        shell_exec( Commands::rescaleImage( $input, $w, $h, $this->optimizedImagePath ) );
         $this->_setImageDimensions([$w, $h]);
     }
 
@@ -216,6 +221,8 @@ class ImageMagick extends Processor {
      * @return boolean True if the image was successfully trimmed, false otherwise.
      */
     protected function _trimImage() : bool {
+        $this->trimmedImagePath = tempnam( PathValidator::getTempDirectory(),  $this->config->getFileBase()."_trim" );
+
         $g = shell_exec( Commands::trimImageThreshold($this->config->getFullInputPath()) );
         $c = explode("+", $g);
         $c = array_merge( 
@@ -227,9 +234,9 @@ class ImageMagick extends Processor {
                 Commands::trimImageCrop(
                     $this->config->getFullInputPath(), 
                     $c, 
-                    $this->config->getFullOutputPath('trimmed')));
+                    $this->trimmedImagePath));
 
-            $this->_setImageDimensions( $this->_retrieveImageSize( $this->config->getFullOutputPath('trimmed') ) );
+            $this->_setImageDimensions( $this->_retrieveImageSize( $this->trimmedImagePath ) );
             return true;
         }
         return false;
@@ -250,16 +257,17 @@ class ImageMagick extends Processor {
      * @return false|int The suggested number of tiles, or `false` if the number of tiles could not be determined.
      */
     public function suggestTilesQuantity() {
+        $this->tempImagePath = tempnam( PathValidator::getTempDirectory(),  $this->config->getFileBase()."_temp" );
+        
         // set threshold image
-        $path = $this->config->getFullOutputPath('temp');
         shell_exec(
             Commands::suggestTilesThreshold(
                 $this->config->getFullInputPath(), 
                 $this->config->getThreshold(), 
-                $path));
+                $this->tempImagePath));
 
         // get dimensions
-        $dims = $this->_retrieveImageSize($path);
+        $dims = $this->_retrieveImageSize($this->tempImagePath);
         $dims = is_array($dims) 
             ? $dims 
             : [ 0, 0 ];
@@ -282,7 +290,7 @@ class ImageMagick extends Processor {
                 break;
             }
 
-            $data = $this->__probeImageRow($path, $y, $maxMarkerLength);
+            $data = $this->__probeImageRow($this->tempImagePath, $y, $maxMarkerLength);
             $border = $this->__seekBorderEnd($data, $minimalTile);
             if($border[0]) {
                 $f = $border[1];
@@ -306,7 +314,7 @@ class ImageMagick extends Processor {
             $pointsChunks = array_chunk($points, 100); unset($points); $output = "";
             foreach($pointsChunks as $chunk) {
                 $part = implode("..", $chunk);
-                $output .= shell_exec( Commands::colorAtPixelsChain($path, $part) ) . "..";
+                $output .= shell_exec( Commands::colorAtPixelsChain($this->tempImagePath, $part) ) . "..";
             }
             unset($pointsChunks, $chunk);
             $temp = array_map(
@@ -389,6 +397,7 @@ class ImageMagick extends Processor {
         $this->_setTilesValues();
         $this->_probeTilesForColor();
         $this->tilesData = [];
+        $this->_removeTempFiles();
         $result = $this->generateSVG();
         return $result;    
     }
@@ -471,5 +480,17 @@ class ImageMagick extends Processor {
         unset($output, $match);
 
         return $row;
+    }
+
+    private function _removeTempFiles() {
+        foreach([
+            $this->tempImagePath,
+            $this->optimizedImagePath,
+            $this->trimmedImagePath
+        ] as $file) {
+            if($file !== null && file_exists($file)) {
+                unlink($file);
+            }
+        }
     }
 }
