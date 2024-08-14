@@ -99,10 +99,6 @@ class Imagick extends Processor {
     protected function _rescaleImage(int $w, int $h, ?string $suffix = null) {
         $this->image['obj']->resizeImage($w, $h, \Imagick::FILTER_LANCZOS, 1);
         
-        $path = is_null($suffix)
-            ? $this->config->getFullOutputPath('temp')
-            : $this->config->getFullOutputPath($suffix);
-        
         $this->_setImageDimensions([$w, $h]);
     }
 
@@ -118,7 +114,6 @@ class Imagick extends Processor {
         
         if ($newWidth != 0 && $newHeight != 0) {
             $this->_setImageDimensions([$newWidth, $newHeight]);
-            $this->image['obj']->writeImage($this->config->getFullOutputPath('trimmed'));
             return true;
         }
         return false;

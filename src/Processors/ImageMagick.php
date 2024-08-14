@@ -34,6 +34,7 @@ class ImageMagick extends Processor {
      * Constructs an ImageMagick converter instance with the given configuration.
      *
      * @param Configuration $config The configuration to use for the converter.
+     * @param bool $trimImage Whether to trim the image after conversion.
      */
     function __construct(Configuration $config, bool $trimImage = false) {
         $this->config = $config;

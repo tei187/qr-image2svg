@@ -138,7 +138,7 @@ class Configuration
         int $threshold = self::DEFAULT_THRESHOLD, 
         string $channel = self::DEFAULT_CHANNEL,
         bool $imUseMagickPrefix = true,
-        bool $imUseConvertPrefix = true,
+        bool $imUseConvertPrefix = true
     ) {
         $this->setSteps($steps);
         $this->setThreshold($threshold);
@@ -146,6 +146,8 @@ class Configuration
         $this->setInputDir($inputDir);
         $this->setOutputDir($outputDir);
         $this->setFileName($fileName);
+        $this->setImMagickPrefixUse($imUseMagickPrefix);
+        $this->setImConvertPrefixUse($imUseConvertPrefix);
     }
 
     // parameters - steps
