@@ -17,7 +17,7 @@ class MIME {
         "image/jp2",
         "image/png",
         "image/bmp",
-        "image/webp",
+        "image/webp"
     ];
 
     /**
