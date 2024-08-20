@@ -20,6 +20,11 @@ class PathValidator
     private static $rootDirectory = null;
 
     /**
+     * @var bool $allowedRelativePath Whether relative paths are allowed.
+     */
+    private static $allowedRelativePath = false;
+
+    /**
      * Caches the results of the realpath() function to improve performance.
      * 
      * @var array<string, string>
@@ -63,6 +68,17 @@ class PathValidator
                 throw new \InvalidArgumentException("Invalid root directory: $directory");
             }
             self::$rootDirectory = $realPath;
+        }
+
+        /**
+         * Sets allowed relative path states.
+         * 
+         * @param bool $allowed Whether relative paths are allowed.
+         * @return void
+         */
+        public static function setAllowedRelativePath(bool $allowedRelativePath): void
+        {
+            self::$allowedRelativePath = $allowedRelativePath;
         }
 
         /**
@@ -116,6 +132,7 @@ class PathValidator
          * @param string $path The path to validate
          * @param bool $mustExist Whether the path must exist
          * @param bool $isFile Whether the path should be a file (true) or directory (false)
+         * @param bool $allowRelative Whether relative paths are allowed
          * @return string The validated and sanitized path
          * @throws \InvalidArgumentException If the path is invalid or inaccessible
          */
@@ -125,7 +142,7 @@ class PathValidator
                 self::init();
             }
 
-            $path = self::sanitize($path);
+            $path = self::sanitize($path, self::$allowedRelativePath);
             $path = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $path);
             $realPath = self::getRealPath($path);
 
@@ -172,11 +189,13 @@ class PathValidator
          * Sanitizes a path by removing null bytes and parent directory references.
          *
          * @param string $path The path to sanitize
+         * @param bool $allowRelative Whether relative paths are allowed. False by default.
          * @return string The sanitized path
          */
-        public static function sanitize(string $path): string
+        public static function sanitize(string $path, bool $allowRelative = false): string
         {
-            return str_replace(["\0", '../'], '', $path);
+            $pool = !$allowRelative ? ["\0", "../", "..\\", ".."] : ["\0"];
+            return str_replace($pool, '', $path);
         }
 
         /**
