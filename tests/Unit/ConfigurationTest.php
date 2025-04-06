@@ -121,9 +121,9 @@ class ConfigurationTest extends TestCase
 
     public function testGetFullInputPathWithValidData()
     {
-        $this->config->setInputDir(__DIR__);
+        $this->config->setInputDir(realpath(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR));
         $this->config->setFileName('qr.jpg');
-        $this->assertEquals(realpath(__DIR__ . DIRECTORY_SEPARATOR . '/qr.jpg'), $this->config->getFullInputPath());
+        $this->assertEquals(realpath(__DIR__ . DIRECTORY_SEPARATOR . '..' . DIRECTORY_SEPARATOR . 'qr.jpg'), $this->config->getFullInputPath());
     }
 
     public function testGetFullInputPathWithMissingData()

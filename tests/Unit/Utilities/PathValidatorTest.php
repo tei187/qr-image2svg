@@ -54,6 +54,7 @@ class PathValidatorTest extends TestCase
 
     public function testvalidateWithRelativePathDisallowed()
     {
+        PathValidator::setAllowedRelativePath(false);
         $result = PathValidator::validate(__DIR__ . DIRECTORY_SEPARATOR . ".." . DIRECTORY_SEPARATOR . '..', true, false);
         $this->assertEquals(__DIR__, $result);
     }
